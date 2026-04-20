@@ -65,9 +65,15 @@ Itens iniciais:
 
 ## Rodar com docker
 
-A forma mais simples de subir tudo e com:
+Granta que o docker está em execução
+```
+docker ps
+```
+entre na pasta raiz do projeto e execute:
+```
+docker compose up --build -d
+```
 
-**docker compose up --build**
 
 Isso sobe:
 
