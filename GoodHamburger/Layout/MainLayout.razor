@@ -1,0 +1,23 @@
+@inherits LayoutComponentBase
+@using GoodHamburger.Configurations
+
+<MudThemeProvider Theme="@ConfigApp.Theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1" Class="main-layout__appbar">
+        <a class="main-layout__title-link" href="/">
+            <MudText Typo="Typo.h6" Class="main-layout__title">Good Hamburger</MudText>
+        </a>
+        <MudSpacer />
+        <a class="main-layout__action" href="@HeaderActionHref">@HeaderActionLabel</a>
+    </MudAppBar>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="main-layout-content">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>

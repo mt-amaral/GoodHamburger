@@ -1,0 +1,124 @@
+@using System.Globalization
+@using GoodHamburger.Shared.Dto.Enums
+@using GoodHamburger.Shared.Dto.MenuItem
+@using Microsoft.AspNetCore.Components
+
+<section class="orders-panel">
+    <header class="orders-panel__header">
+        <MudText Typo="Typo.h4" Class="orders-panel__heading">Acompanhamentos</MudText>
+        <MudText Typo="Typo.body2" Class="orders-panel__subheading">
+            Escolha uma batata, uma bebida ou os dois para completar o pedido.
+        </MudText>
+    </header>
+
+    @if (Items.Count == 0)
+    {
+        <MudText Typo="Typo.body1" Class="orders-panel__empty">
+            Nenhum acompanhamento dispon&iacute;vel no momento.
+        </MudText>
+    }
+    else
+    {
+        <div class="orders-grid">
+            @foreach (var item in Items)
+            {
+                <button type="button"
+                        class="@GetCardClass(item)"
+                        @onclick="() => ToggleSelectionAsync(item)"
+                        aria-pressed="@IsSelected(item)">
+                    <span class="orders-card__media">
+                        <span class="orders-card__image-frame">
+                            <img class="@GetImageClass(item.Name)" src="@ResolveImage(item.ImageUrl)" alt="@FormatName(item.Name)" />
+                        </span>
+                    </span>
+
+                    <span class="orders-card__footer">
+                        <span class="orders-card__content">
+                            <span class="orders-card__badge">@GetAccompanimentLabel(item)</span>
+                            <span class="orders-card__name">@FormatName(item.Name)</span>
+                            @if (IsSelected(item))
+                            {
+                                <span class="orders-card__selection">Selecionado</span>
+                            }
+                        </span>
+
+                        <span class="orders-card__price">@DisplayFormatters.FormatCurrency(item.Price)</span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly TextInfo TextInfo = CultureInfo.GetCultureInfo("pt-BR").TextInfo;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<MenuItemResponseDto> Items { get; set; } = Array.Empty<MenuItemResponseDto>();
+
+    [Parameter]
+    public int? SelectedSideId { get; set; }
+
+    [Parameter]
+    public int? SelectedDrinkId { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<MenuItemResponseDto> OnItemToggle { get; set; }
+
+    private Task ToggleSelectionAsync(MenuItemResponseDto item) => OnItemToggle.InvokeAsync(item);
+
+    private bool IsSelected(MenuItemResponseDto item)
+    {
+        return item.AccompanimentType?.Trim().ToLowerInvariant() switch
+        {
+            "side" => item.Id == SelectedSideId,
+            "drink" => item.Id == SelectedDrinkId,
+            _ => false
+        };
+    }
+
+    private string GetCardClass(MenuItemResponseDto item)
+    {
+        return IsSelected(item)
+            ? "orders-card orders-card--selected"
+            : "orders-card";
+    }
+
+    private static string GetAccompanimentLabel(MenuItemResponseDto item)
+    {
+        return item.AccompanimentType?.Trim().ToLowerInvariant() switch
+        {
+            "side" => "Batata",
+            "drink" => "Bebida",
+            _ => "Complemento"
+        };
+    }
+
+    private static string FormatName(string name)
+    {
+        var normalizedName = name.Trim().ToLowerInvariant() switch
+        {
+            "soft-drink" => "refrigerante",
+            "fries" => "batata frita",
+            _ => name.Replace("-", " ")
+        };
+
+        return TextInfo.ToTitleCase(normalizedName);
+    }
+
+    private static string ResolveImage(string? imageUrl)
+    {
+        return string.IsNullOrWhiteSpace(imageUrl)
+            ? "/images/menu/default.webp"
+            : imageUrl;
+    }
+
+    private static string GetImageClass(string name)
+    {
+        return name.Trim().ToLowerInvariant() switch
+        {
+            "x-egg" => "orders-card__image orders-card__image--x-egg",
+            _ => "orders-card__image"
+        };
+    }
+}

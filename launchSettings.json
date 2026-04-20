@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Docker Compose": {
+      "commandName": "DockerCompose",
+      "commandVersion": "1.0",
+      "serviceActions": {
+        "goodhamburger-api": "StartDebugging",
+        "goodhamburger-front": "StartWithoutDebugging"
+      }
+    }
+  }
+}

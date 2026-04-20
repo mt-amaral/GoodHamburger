@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="GoodHamburger/GoodHamburger.csproj" Id="34c63d59-e360-4faa-9987-a6cbfe5bffcc" />
+    <Project Path="GoodHamburger.Api/GoodHamburger.Api.csproj" Id="3ec86c5d-c630-4ba6-878f-537e2cb499c9" />
+    <Project Path="GoodHamburger.Shared/GoodHamburger.Shared.csproj" Id="7fd34e36-58d4-42c0-8766-f31be903ee1f" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="GoodHamburger.Test/GoodHamburger.Test.csproj" Id="5b243dc8-afd9-4598-a6ef-839850c2faf8" />
+  </Folder>
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
+</Solution>

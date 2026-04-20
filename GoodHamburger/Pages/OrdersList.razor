@@ -1,0 +1,247 @@
+@page "/orders/list"
+@using System.Globalization
+@using GoodHamburger.Services.Abstractions
+@using GoodHamburger.Shared.Dto.Order
+@inject IOrderServiceClient OrderService
+@inject NavigationManager Navigation
+
+<PageTitle>Lista de Pedidos</PageTitle>
+
+<section class="orders-list-page">
+    <header class="orders-list-page__header">
+        <div>
+            <MudText Typo="Typo.h4" Class="orders-list-page__title">Pedidos</MudText>
+            <MudText Typo="Typo.body2" Class="orders-list-page__subtitle">
+                Acompanhe os pedidos criados, edite sele&ccedil;&otilde;es e remova registros quando precisar.
+            </MudText>
+        </div>
+
+        <div class="orders-list-page__badge">
+            @_orders.Count pedido@( _orders.Count == 1 ? string.Empty : "s")
+        </div>
+    </header>
+
+    @if (_isLoading)
+    {
+        <div class="orders-list-page__state">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.body1">Carregando pedidos...</MudText>
+        </div>
+    }
+    else if (_hasLoadError)
+    {
+        <div class="orders-list-page__state">
+            <MudButton Color="Color.Primary"
+                       Variant="Variant.Filled"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="LoadOrdersAsync">
+                Tentar novamente
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        @if (_orders.Count == 0)
+        {
+            <section class="orders-list-page__empty">
+                <MudText Typo="Typo.h5">Nenhum pedido cadastrado</MudText>
+                <MudText Typo="Typo.body1">
+                    Quando um pedido for criado, ele vai aparecer aqui para consulta e edi&ccedil;&atilde;o.
+                </MudText>
+            </section>
+        }
+        else
+        {
+            <div class="orders-list">
+                @foreach (var order in _orders)
+                {
+                    var sandwich = GetSandwich(order);
+                    var accompaniments = GetAccompaniments(order);
+
+                    <article class="orders-list__card">
+                        <div class="orders-list__content">
+                            <div class="orders-list__top">
+                                <div class="orders-list__headline">
+                                    <h2 class="orders-list__name">@GetOrderTitle(order)</h2>
+                                    <span class="orders-list__meta">
+                                        Pedido @GetShortId(order.Id) - @FormatDate(order.CreatedAt)
+                                    </span>
+                                </div>
+
+                                <div class="orders-list__money">
+                                    <span class="orders-list__money-label">Total</span>
+                                    <strong class="orders-list__money-value">@DisplayFormatters.FormatCurrency(order.Total)</strong>
+                                </div>
+                            </div>
+
+                            @if (sandwich is not null)
+                            {
+                                <div class="orders-list__section">
+                                    <span class="orders-list__section-label">Hamb&uacute;rguer</span>
+                                    <span class="orders-list__section-value">@FormatName(sandwich.Name)</span>
+                                </div>
+                            }
+
+                            <div class="orders-list__section">
+                                <span class="orders-list__section-label">Acompanhamentos</span>
+
+                                @if (accompaniments.Count == 0)
+                                {
+                                    <span class="orders-list__section-empty">Sem acompanhamentos selecionados.</span>
+                                }
+                                else
+                                {
+                                    <ul class="orders-list__items">
+                                        @foreach (var item in accompaniments)
+                                        {
+                                            <li class="orders-list__item">
+                                                <span>@FormatName(item.Name)</span>
+                                                <span>@DisplayFormatters.FormatCurrency(item.UnitPrice)</span>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+
+                            <div class="orders-list__footer">
+                                <span>Subtotal: @DisplayFormatters.FormatCurrency(order.Subtotal)</span>
+
+                                @if (order.DiscountPercentage > 0)
+                                {
+                                    <span class="orders-list__discount">
+                                        Desconto de @order.DiscountPercentage.ToString("0", CurrencyCulture)% aplicado
+                                    </span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="orders-list__actions">
+                            <button type="button"
+                                    class="orders-list__action orders-list__action--edit"
+                                    @onclick="() => EditOrder(order.Id)">
+                                <MudIcon Icon="@Icons.Material.Filled.Edit" />
+                                <span>Editar</span>
+                            </button>
+
+                            <button type="button"
+                                    class="orders-list__action orders-list__action--delete"
+                                    disabled="@(_deletingOrderId == order.Id)"
+                                    @onclick="() => DeleteOrderAsync(order)">
+                                <MudIcon Icon="@Icons.Material.Filled.DeleteOutline" />
+                                <span>@(_deletingOrderId == order.Id ? "Excluindo..." : "Excluir")</span>
+                            </button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private static readonly CultureInfo CurrencyCulture = CultureInfo.GetCultureInfo("pt-BR");
+    private static readonly TextInfo TextInfo = CurrencyCulture.TextInfo;
+
+    private readonly List<OrderResponseDto> _orders = [];
+    private bool _isLoading = true;
+    private bool _hasLoadError;
+    private Guid? _deletingOrderId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOrdersAsync();
+    }
+
+    private async Task LoadOrdersAsync()
+    {
+        _isLoading = true;
+        _hasLoadError = false;
+
+        try
+        {
+            var response = await OrderService.ListAsync(CancellationToken.None);
+
+            if (response.Data is null)
+            {
+                _hasLoadError = true;
+                return;
+            }
+
+            _orders.Clear();
+            _orders.AddRange(response.Data);
+        }
+        catch (ApiRequestFailedException)
+        {
+            _hasLoadError = true;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void EditOrder(Guid orderId)
+    {
+        Navigation.NavigateTo($"/orders/{orderId}");
+    }
+
+    private async Task DeleteOrderAsync(OrderResponseDto order)
+    {
+        _deletingOrderId = order.Id;
+
+        try
+        {
+            await OrderService.DeleteAsync(order.Id, CancellationToken.None);
+            _orders.RemoveAll(currentOrder => currentOrder.Id == order.Id);
+        }
+        catch (ApiRequestFailedException)
+        {
+        }
+        finally
+        {
+            _deletingOrderId = null;
+        }
+    }
+
+    private static OrderItemResponseDto? GetSandwich(OrderResponseDto order)
+    {
+        return order.Items.FirstOrDefault(item =>
+            string.Equals(item.Category, "Sandwich", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static List<OrderItemResponseDto> GetAccompaniments(OrderResponseDto order)
+    {
+        return order.Items
+            .Where(item => string.Equals(item.Category, "Accompaniment", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private static string GetOrderTitle(OrderResponseDto order)
+    {
+        return GetSandwich(order) is { } sandwich
+            ? FormatName(sandwich.Name)
+            : "Pedido sem hamb\u00FArguer";
+    }
+
+    private static string GetShortId(Guid orderId)
+    {
+        return orderId.ToString("N")[..8].ToUpperInvariant();
+    }
+
+    private static string FormatDate(DateTimeOffset value)
+    {
+        return value.ToLocalTime().ToString("dd/MM/yyyy 'as' HH:mm", CurrencyCulture);
+    }
+
+    private static string FormatName(string name)
+    {
+        var normalizedName = name.Trim().ToLowerInvariant() switch
+        {
+            "soft-drink" => "refrigerante",
+            "fries" => "batata frita",
+            _ => name.Replace("-", " ")
+        };
+
+        return TextInfo.ToTitleCase(normalizedName);
+    }
+}

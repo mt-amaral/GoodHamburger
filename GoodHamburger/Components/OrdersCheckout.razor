@@ -1,0 +1,180 @@
+@using System.Globalization
+@using GoodHamburger.Shared.Dto.MenuItem
+@using GoodHamburger.Shared.Dto.Order
+@using Microsoft.AspNetCore.Components
+
+<section class="orders-review">
+    <header class="orders-panel__header">
+        <MudText Typo="Typo.h4" Class="orders-panel__heading">@(IsEditing ? "Editar pedido" : "Fechar pedido")</MudText>
+        <MudText Typo="Typo.body2" Class="orders-panel__subheading">
+            @(IsEditing
+                ? "Revise os itens selecionados antes de salvar as altera&ccedil;&otilde;es."
+                : "Revise os itens escolhidos antes de enviar o pedido.")
+        </MudText>
+    </header>
+
+    <div class="orders-review__items">
+        @foreach (var item in GetSelectedItems())
+        {
+            <article class="orders-review__item">
+                <div class="orders-review__thumb">
+                    <img class="@GetImageClass(item.Name)" src="@ResolveImage(item.ImageUrl)" alt="@FormatName(item.Name)" />
+                </div>
+
+                <div class="orders-review__meta">
+                    <div class="orders-review__meta-copy">
+                        <span class="orders-review__meta-label">@GetItemLabel(item)</span>
+                        <span class="orders-review__meta-name">@FormatName(item.Name)</span>
+                    </div>
+
+                    <span class="orders-review__meta-price">@DisplayFormatters.FormatCurrency(item.Price)</span>
+                </div>
+            </article>
+        }
+    </div>
+
+    <div class="orders-review__summary">
+        <div class="orders-review__summary-row">
+            <span>Subtotal</span>
+            <span>@DisplayFormatters.FormatCurrency(Subtotal)</span>
+        </div>
+
+        @if (DiscountPercentage > 0)
+        {
+            <div class="orders-review__summary-row">
+                <span>Desconto (@DiscountPercentage.ToString("0", CurrencyCulture)%)</span>
+                <span>-@DisplayFormatters.FormatCurrency(DiscountAmount)</span>
+            </div>
+        }
+
+        <div class="orders-review__summary-divider"></div>
+
+        <div class="orders-review__summary-row orders-review__summary-row--total">
+            <span>Total</span>
+            <span>@DisplayFormatters.FormatCurrency(Total)</span>
+        </div>
+    </div>
+
+    @if (CreatedOrder is null)
+    {
+        <button type="button"
+                class="orders-review__submit"
+                @onclick="SubmitAsync"
+                disabled="@IsSubmitting">
+            <span>@GetSubmitLabel()</span>
+            <span>@DisplayFormatters.FormatCurrency(Total)</span>
+        </button>
+    }
+    else
+    {
+        <button type="button"
+                class="orders-review__secondary"
+                @onclick="StartNewOrderAsync">
+            @(IsEditing ? "Criar novo pedido" : "Montar outro pedido")
+        </button>
+    }
+</section>
+
+@code {
+    private static readonly CultureInfo CurrencyCulture = CultureInfo.GetCultureInfo("pt-BR");
+    private static readonly TextInfo TextInfo = CurrencyCulture.TextInfo;
+
+    [Parameter]
+    public MenuItemResponseDto? Sandwich { get; set; }
+
+    [Parameter]
+    public MenuItemResponseDto? Side { get; set; }
+
+    [Parameter]
+    public MenuItemResponseDto? Drink { get; set; }
+
+    [Parameter]
+    public decimal Subtotal { get; set; }
+
+    [Parameter]
+    public decimal DiscountPercentage { get; set; }
+
+    [Parameter]
+    public decimal DiscountAmount { get; set; }
+
+    [Parameter]
+    public decimal Total { get; set; }
+
+    [Parameter]
+    public bool IsSubmitting { get; set; }
+
+    [Parameter]
+    public OrderResponseDto? CreatedOrder { get; set; }
+
+    [Parameter]
+    public bool IsEditing { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnSubmit { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnStartNewOrder { get; set; }
+
+    private string GetSubmitLabel()
+    {
+        if (IsSubmitting)
+            return IsEditing ? "Salvando altera\u00E7\u00F5es..." : "Finalizando pedido...";
+
+        return IsEditing ? "Salvar altera\u00E7\u00F5es" : "Finalizar pedido";
+    }
+
+    private Task SubmitAsync() => OnSubmit.InvokeAsync();
+
+    private Task StartNewOrderAsync() => OnStartNewOrder.InvokeAsync();
+
+    private IEnumerable<MenuItemResponseDto> GetSelectedItems()
+    {
+        if (Sandwich is not null)
+            yield return Sandwich;
+
+        if (Side is not null)
+            yield return Side;
+
+        if (Drink is not null)
+            yield return Drink;
+    }
+
+    private static string GetItemLabel(MenuItemResponseDto item)
+    {
+        return item.Category.Trim().ToLowerInvariant() switch
+        {
+            "sandwich" => "Hamb\u00FArguer",
+            "accompaniment" when string.Equals(item.AccompanimentType, "Side", StringComparison.OrdinalIgnoreCase) => "Batata",
+            "accompaniment" when string.Equals(item.AccompanimentType, "Drink", StringComparison.OrdinalIgnoreCase) => "Bebida",
+            _ => "Item"
+        };
+    }
+
+    private static string FormatName(string name)
+    {
+        var normalizedName = name.Trim().ToLowerInvariant() switch
+        {
+            "soft-drink" => "refrigerante",
+            "fries" => "batata frita",
+            _ => name.Replace("-", " ")
+        };
+
+        return TextInfo.ToTitleCase(normalizedName);
+    }
+
+    private static string ResolveImage(string? imageUrl)
+    {
+        return string.IsNullOrWhiteSpace(imageUrl)
+            ? "/images/menu/default.webp"
+            : imageUrl;
+    }
+
+    private static string GetImageClass(string name)
+    {
+        return name.Trim().ToLowerInvariant() switch
+        {
+            "x-egg" => "orders-review__image orders-review__image--x-egg",
+            _ => "orders-review__image"
+        };
+    }
+}

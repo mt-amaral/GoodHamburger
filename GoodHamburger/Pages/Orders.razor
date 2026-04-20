@@ -1,0 +1,445 @@
+@page "/orders"
+@page "/orders/{OrderId:guid}"
+@using GoodHamburger.Services.Abstractions
+@using GoodHamburger.Shared.Dto.Enums
+@using GoodHamburger.Shared.Dto.MenuItem
+@using GoodHamburger.Shared.Dto.Order
+@inject IMenuservices MenuService
+@inject IOrderServiceClient OrderService
+@inject IApiNotificationService NotificationService
+@inject NavigationManager Navigation
+
+<PageTitle>@(IsEditMode ? "Editar Pedido" : "Pedidos")</PageTitle>
+
+<section class="orders-shell">
+    <div class="orders-stage">
+        @if (_isLoading)
+        {
+            <div class="orders-state">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+                <MudText Typo="Typo.body1">Carregando card&aacute;pio...</MudText>
+            </div>
+        }
+        else if (HasLoadError)
+        {
+            <div class="orders-state">
+                <MudButton Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="RetryLoadAsync">
+                    Tentar novamente
+                </MudButton>
+            </div>
+        }
+        else
+        {
+            <div class="orders-progress" aria-label="Etapas do pedido">
+                <span class="@GetStepClass(OrderStep.Sandwiches)">1. Hamb&uacute;rguer</span>
+                <span class="@GetStepClass(OrderStep.Accompaniments)">2. Acompanhamentos</span>
+                <span class="@GetStepClass(OrderStep.Review)">3. Revis&atilde;o</span>
+            </div>
+
+            @if (_currentStep == OrderStep.Sandwiches)
+            {
+                <OrdersSandwichList Items="_sandwiches"
+                                    SelectedItemId="_selectedSandwichId"
+                                    SelectedItemIdChanged="HandleSandwichSelectionChanged" />
+            }
+            else if (_currentStep == OrderStep.Accompaniments)
+            {
+                <OrdersAccompanimentList Items="_accompaniments"
+                                         SelectedSideId="_selectedSideId"
+                                         SelectedDrinkId="_selectedDrinkId"
+                                         OnItemToggle="HandleAccompanimentToggleAsync" />
+            }
+            else
+            {
+                <OrdersCheckout Sandwich="SelectedSandwich"
+                                Side="SelectedSide"
+                                Drink="SelectedDrink"
+                                Subtotal="PreviewSubtotal"
+                                DiscountPercentage="PreviewDiscountPercentage"
+                                DiscountAmount="PreviewDiscountAmount"
+                                Total="PreviewTotal"
+                                IsSubmitting="_isSubmitting"
+                                CreatedOrder="_savedOrder"
+                                IsEditing="@IsEditMode"
+                                OnSubmit="SubmitOrderAsync"
+                                OnStartNewOrder="StartNewOrderAsync" />
+            }
+
+            <div class="orders-nav">
+                @if (_currentStep != OrderStep.Sandwiches)
+                {
+                    <MudButton Class="orders-nav__button"
+                               Color="Color.Default"
+                               Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Filled.ArrowBack"
+                               OnClick="GoBack">
+                        Voltar
+                    </MudButton>
+                }
+
+                @if (_currentStep != OrderStep.Review)
+                {
+                    <MudButton Class="orders-nav__button"
+                               Color="Color.Primary"
+                               Variant="Variant.Filled"
+                               EndIcon="@Icons.Material.Filled.ArrowForward"
+                               Disabled="@IsNextDisabled"
+                               OnClick="GoNext">
+                        @NextButtonLabel
+                    </MudButton>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter]
+    public Guid? OrderId { get; set; }
+
+    private readonly List<MenuItemResponseDto> _sandwiches = [];
+    private readonly List<MenuItemResponseDto> _accompaniments = [];
+
+    private OrderStep _currentStep = OrderStep.Sandwiches;
+    private bool _isLoading = true;
+    private bool _isSubmitting;
+    private bool _menuLoaded;
+    private bool _hasMenuLoadError;
+    private bool _hasOrderLoadError;
+    private int? _selectedSandwichId;
+    private int? _selectedSideId;
+    private int? _selectedDrinkId;
+    private Guid? _loadedOrderId;
+    private OrderResponseDto? _savedOrder;
+
+    private bool IsEditMode => OrderId.HasValue;
+    private bool HasLoadError => _hasMenuLoadError || _hasOrderLoadError;
+    private MenuItemResponseDto? SelectedSandwich => _sandwiches.FirstOrDefault(item => item.Id == _selectedSandwichId);
+    private MenuItemResponseDto? SelectedSide => _accompaniments.FirstOrDefault(item => item.Id == _selectedSideId);
+    private MenuItemResponseDto? SelectedDrink => _accompaniments.FirstOrDefault(item => item.Id == _selectedDrinkId);
+
+    private decimal PreviewSubtotal => GetSelectedItems().Sum(item => item.Price);
+
+    private decimal PreviewDiscountPercentage => SelectedSandwich switch
+    {
+        not null when SelectedSide is not null && SelectedDrink is not null => 20m,
+        not null when SelectedDrink is not null => 15m,
+        not null when SelectedSide is not null => 10m,
+        _ => 0m
+    };
+
+    private decimal PreviewDiscountAmount => Math.Round(
+        PreviewSubtotal * PreviewDiscountPercentage / 100m,
+        2,
+        MidpointRounding.AwayFromZero);
+
+    private decimal PreviewTotal => Math.Round(
+        PreviewSubtotal - PreviewDiscountAmount,
+        2,
+        MidpointRounding.AwayFromZero);
+
+    private bool IsNextDisabled => _currentStep switch
+    {
+        OrderStep.Sandwiches => SelectedSandwich is null,
+        OrderStep.Accompaniments => SelectedSandwich is null,
+        _ => false
+    };
+
+    private string NextButtonLabel => _currentStep switch
+    {
+        OrderStep.Sandwiches => "Escolher acompanhamentos",
+        OrderStep.Accompaniments => "Revisar pedido",
+        _ => string.Empty
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await EnsureMenuLoadedAsync();
+
+        if (!_menuLoaded || _hasMenuLoadError)
+            return;
+
+        if (_loadedOrderId == OrderId)
+            return;
+
+        if (OrderId.HasValue)
+        {
+            await LoadOrderForEditAsync(OrderId.Value);
+        }
+        else
+        {
+            ResetBuilderState();
+        }
+
+        _loadedOrderId = OrderId;
+    }
+
+    private async Task EnsureMenuLoadedAsync()
+    {
+        if (_menuLoaded)
+            return;
+
+        _isLoading = true;
+        _hasMenuLoadError = false;
+
+        try
+        {
+            var response = await MenuService.ListAsync(string.Empty, CancellationToken.None);
+
+            if (response.Data is null)
+            {
+                _hasMenuLoadError = true;
+                return;
+            }
+
+            _sandwiches.Clear();
+            _accompaniments.Clear();
+
+            _sandwiches.AddRange(response.Data
+                .Where(item => string.Equals(item.Category, nameof(MenuItemCategory.Sandwich), StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.Name));
+
+            _accompaniments.AddRange(response.Data
+                .Where(item => string.Equals(item.Category, nameof(MenuItemCategory.Accompaniment), StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.AccompanimentType)
+                .ThenBy(item => item.Name));
+
+            _menuLoaded = true;
+        }
+        catch (ApiRequestFailedException)
+        {
+            _hasMenuLoadError = true;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadOrderForEditAsync(Guid orderId)
+    {
+        _isLoading = true;
+        _hasOrderLoadError = false;
+        ClearSubmissionState();
+
+        try
+        {
+            var response = await OrderService.GetByIdAsync(orderId, CancellationToken.None);
+
+            if (response.Data is null)
+            {
+                ResetBuilderState();
+                _hasOrderLoadError = true;
+                return;
+            }
+
+            ApplyOrderSelection(response.Data);
+        }
+        catch (ApiRequestFailedException)
+        {
+            ResetBuilderState();
+            _hasOrderLoadError = true;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ApplyOrderSelection(OrderResponseDto order)
+    {
+        ResetBuilderState();
+
+        foreach (var item in order.Items)
+        {
+            var menuItem = _sandwiches.Concat(_accompaniments).FirstOrDefault(currentItem => currentItem.Id == item.MenuItemId);
+            if (menuItem is null)
+                continue;
+
+            if (string.Equals(menuItem.Category, nameof(MenuItemCategory.Sandwich), StringComparison.OrdinalIgnoreCase))
+            {
+                _selectedSandwichId = menuItem.Id;
+                continue;
+            }
+
+            if (string.Equals(menuItem.AccompanimentType, nameof(AccompanimentType.Side), StringComparison.OrdinalIgnoreCase))
+            {
+                _selectedSideId = menuItem.Id;
+            }
+            else if (string.Equals(menuItem.AccompanimentType, nameof(AccompanimentType.Drink), StringComparison.OrdinalIgnoreCase))
+            {
+                _selectedDrinkId = menuItem.Id;
+            }
+        }
+    }
+
+    private Task HandleSandwichSelectionChanged(int? selectedItemId)
+    {
+        _selectedSandwichId = selectedItemId;
+        ClearSubmissionState();
+
+        if (_selectedSandwichId is null && _currentStep != OrderStep.Sandwiches)
+        {
+            _currentStep = OrderStep.Sandwiches;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandleAccompanimentToggleAsync(MenuItemResponseDto item)
+    {
+        if (string.Equals(item.AccompanimentType, nameof(AccompanimentType.Side), StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedSideId = _selectedSideId == item.Id ? null : item.Id;
+        }
+        else if (string.Equals(item.AccompanimentType, nameof(AccompanimentType.Drink), StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedDrinkId = _selectedDrinkId == item.Id ? null : item.Id;
+        }
+
+        ClearSubmissionState();
+        return Task.CompletedTask;
+    }
+
+    private void GoNext()
+    {
+        if (IsNextDisabled)
+            return;
+
+        ClearSubmissionState();
+
+        _currentStep = _currentStep switch
+        {
+            OrderStep.Sandwiches => OrderStep.Accompaniments,
+            OrderStep.Accompaniments => OrderStep.Review,
+            _ => _currentStep
+        };
+    }
+
+    private void GoBack()
+    {
+        ClearSubmissionState();
+
+        _currentStep = _currentStep switch
+        {
+            OrderStep.Accompaniments => OrderStep.Sandwiches,
+            OrderStep.Review => OrderStep.Accompaniments,
+            _ => _currentStep
+        };
+    }
+
+    private async Task SubmitOrderAsync()
+    {
+        if (SelectedSandwich is null)
+        {
+            _currentStep = OrderStep.Sandwiches;
+            NotificationService.Notify("Selecione um hamb\u00FArguer para finalizar o pedido.", Severity.Warning);
+            return;
+        }
+
+        _isSubmitting = true;
+        _savedOrder = null;
+
+        try
+        {
+            var response = IsEditMode && OrderId.HasValue
+                ? await OrderService.UpdateAsync(
+                    OrderId.Value,
+                    new UpdateOrderRequestDto(_selectedSandwichId, _selectedSideId, _selectedDrinkId),
+                    CancellationToken.None)
+                : await OrderService.CreateAsync(
+                    new CreateOrderRequestDto(_selectedSandwichId, _selectedSideId, _selectedDrinkId),
+                    CancellationToken.None);
+
+            if (response.Data is null)
+            {
+                return;
+            }
+
+            _savedOrder = response.Data;
+        }
+        catch (ApiRequestFailedException)
+        {
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private Task StartNewOrderAsync()
+    {
+        if (OrderId.HasValue)
+        {
+            Navigation.NavigateTo("/orders");
+            return Task.CompletedTask;
+        }
+
+        ResetBuilderState();
+        return Task.CompletedTask;
+    }
+
+    private async Task RetryLoadAsync()
+    {
+        _menuLoaded = false;
+        _loadedOrderId = null;
+        _hasMenuLoadError = false;
+        _hasOrderLoadError = false;
+        _isLoading = true;
+        ResetBuilderState();
+        await OnParametersSetAsync();
+    }
+
+    private void ResetBuilderState()
+    {
+        _selectedSandwichId = null;
+        _selectedSideId = null;
+        _selectedDrinkId = null;
+        _currentStep = OrderStep.Sandwiches;
+        _hasOrderLoadError = false;
+        ClearSubmissionState();
+    }
+
+    private void ClearSubmissionState()
+    {
+        _savedOrder = null;
+    }
+
+    private string GetStepClass(OrderStep step)
+    {
+        var classes = new List<string> { "orders-progress__step" };
+
+        if (_currentStep == step)
+        {
+            classes.Add("orders-progress__step--active");
+        }
+        else if (_currentStep > step)
+        {
+            classes.Add("orders-progress__step--done");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private IEnumerable<MenuItemResponseDto> GetSelectedItems()
+    {
+        if (SelectedSandwich is not null)
+            yield return SelectedSandwich;
+
+        if (SelectedSide is not null)
+            yield return SelectedSide;
+
+        if (SelectedDrink is not null)
+            yield return SelectedDrink;
+    }
+
+    private enum OrderStep
+    {
+        Sandwiches,
+        Accompaniments,
+        Review
+    }
+}
