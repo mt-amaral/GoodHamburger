@@ -3,15 +3,15 @@
 Projeto com API em ASP.NET Core + frontend em Blazor WebAssembly
 
 - API REST `.NET 9`
-- `Blazor WebAssembly` front 
-- `Mudblazor` lib de componentes
+- `Blazor WebAssembly` front
+- `MudBlazor` lib de componentes
 - `PostgreSQL` como banco de dados
 - `Response` padrão para as respostas da API
 - `FluentValidation` validação nos requests (DTO)
-- `services` centralizada com a regra de negocio
+- `services` centralizada com a regra de negócio
 - `Entity Framework Core` ORM
-- `seed` inicial do cardapio
-- `ExceptionMiddleware` capturar exceçõesa e devolve no padrão da API
+- `seed` inicial do cardápio
+- `ExceptionMiddleware` captura exceções e devolve no padrão da API
 - testes automatizados para API, DTOs, entidades e front
 
 ## Estrutura
@@ -29,7 +29,7 @@ Projeto com API em ASP.NET Core + frontend em Blazor WebAssembly
 - sandwich + batata + refrigerante = 20% de desconto
 - sandwich + refrigerante = 15% de desconto
 - sandwich + batata = 10% de desconto
-- sem combinacao elegivel = sem desconto
+- sem combinação elegível = sem desconto
 
 ## Endpoints principais
 
@@ -41,7 +41,7 @@ Projeto com API em ASP.NET Core + frontend em Blazor WebAssembly
 - `PUT /api/v1/order/{id}`
 - `DELETE /api/v1/order/{id}`
 
-## Padrao de retorno
+## Padrão de retorno
 
 A API trabalha com um objeto `Response<T>` simples:
 
@@ -49,11 +49,11 @@ A API trabalha com um objeto `Response<T>` simples:
 - `message`
 - `errors`
 
-Mantenha sempre esse padrao nas respostas da API.
+Mantenha sempre esse padrão nas respostas da API.
 
 ## Seed inicial
 
-Se voce iniciar a API com `Staging` ou `FistStart`, ela aplica as migrations e popula o cardapio inicial automaticamente.(staging para rodar no docker-compose, fistStart para rodar local: Desenvolvimento)
+Se você iniciar a API com `Staging` ou `FistStart`, ela aplica as migrations e popula o cardápio inicial automaticamente. (`Staging` para rodar no docker-compose, `FistStart` para rodar local: Desenvolvimento)
 
 Itens iniciais:
 
@@ -65,15 +65,17 @@ Itens iniciais:
 
 ## Rodar com docker
 
-Granta que o docker está em execução
-```
+Garanta que o docker está em execução:
+
+```bash
 docker ps
 ```
-entre na pasta raiz do projeto e execute:
-```
+
+Entre na pasta raiz do projeto e execute:
+
+```bash
 docker compose up --build -d
 ```
-
 
 Isso sobe:
 
@@ -81,21 +83,29 @@ Isso sobe:
 - API em `http://localhost:8080`
 - front em `http://localhost:8081`
 
-Observacao:
-No `docker-compose` a API roda em `Staging`, entao o Swagger nao fica habilitado.
+Observação:
+No `docker-compose` a API roda em `Staging`, então o Swagger não fica habilitado.
 
 ## Rodar local
 
 Se quiser rodar local sem subir tudo em container:
 
 1. Suba o banco:
-   `docker compose up -d postgres`
-2. Rode a API com seed:
-   `dotnet run --project GoodHamburger.Api --launch-profile FistStart`
-3. Rode o front:
-   `dotnet run --project GoodHamburger`
+   ```bash
+   docker compose up -d postgres
+   ```
 
-Urls locais:
+2. Rode a API com seed:
+   ```bash
+   dotnet run --project GoodHamburger.Api --launch-profile FistStart
+   ```
+
+3. Rode o front:
+   ```bash
+   dotnet run --project GoodHamburger
+   ```
+
+URLs locais:
 
 - API: `https://localhost:7002`
 - Swagger: `https://localhost:7002/swagger`
@@ -103,13 +113,16 @@ Urls locais:
 
 ### GoodHamburger.Test (xUnit)
 
-Os testes estao simples, mas cobrem os pontos principais:
+Os testes estão simples, mas cobrem os pontos principais:
 
-- validacao dos DTOs
-- validacao das entidades
+- validação dos DTOs
+- validação das entidades
 - controllers
 - services
 - algumas partes do front
 
 Rodar testes:
-**dotnet test**
+
+```bash
+dotnet test
+```
